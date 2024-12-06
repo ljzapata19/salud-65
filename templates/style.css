@@ -1,0 +1,46 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+body{
+    background-image: url(./images/bg_blanco.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: top left;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    margin: 0;
+}
+.nav{
+    margin-left: 15px;
+}
+.navbar  {
+    
+    background-color: #495057; 
+}
+nav a {
+    text-decoration: none;
+    color: #CADCD1;
+    display: block;
+}
+.cambia:hover {
+    color: #9fa2a8 !important;
+}
+.container{
+    flex: 1;
+}
+footer {
+    background-color: #495057;
+    color: #CADCD1;
+    text-align: center;
+    padding: 10px 0;
+}
+.margtop25{
+    margin-top: 25px;
+
+}
+.margbot25{
+    margin-bottom: 25px;
+}
