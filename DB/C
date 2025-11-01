@@ -880,44 +880,55 @@ public function modificar_password1(Request $request)
 
     return $returnData;
 }
- public function alertasClinicas()
+    public function alertasClinicas(Request $request)
 {
     $medico = auth()->user()->medico;
     if (!$medico) {
         return redirect()->back()->with('error', 'No se encontró el médico asociado.');
     }
 
-     // IDs de pacientes habilitados
+    // IDs de pacientes habilitados
     $pacienteIds = MedicoPaciente::where('rela_medico', $medico->id)
         ->where('estado_habilitacion', '2')
         ->pluck('rela_paciente');
 
-    // Pacientes completos
-    $pacientes = Paciente::whereIn('id', $pacienteIds)->get();
-
+    // Pacientes completos, ordenados por apellido y nombre
+    $pacientes = Paciente::whereIn('id', $pacienteIds)
+        ->orderBy('apellido')
+        ->orderBy('nombre')
+        ->get();
+    
     // Obtener el último registro clínico de cada paciente
-    $datos = DatosClinicos::select('datos_clinicos.*')
-        ->whereIn('rela_paciente', $pacienteIds)
+    $datos = DatosClinicos::whereIn('rela_paciente', $pacienteIds)
         ->whereIn('estado_clinico', function ($query) {
             $query->selectRaw('MAX(estado_clinico)')
-                ->from('datos_clinicos as dc2')
-                ->whereColumn('dc2.rela_paciente', 'datos_clinicos.rela_paciente');
+                ->from('datos_clinicos')
+                ->groupBy('rela_paciente');
         })
         ->get();
 
     $alertas = [];
 
     foreach ($datos as $dato) {
-        $paciente = Paciente::find($dato->rela_paciente);
+        $paciente = $pacientes->firstWhere('id', $dato->rela_paciente);
         if (!$paciente) continue;
 
         $nombre = $paciente->apellido . ', ' . $paciente->nombre;
 
-        $imc = $dato->talla > 0 ? $dato->peso / pow(($dato->talla / 100), 2) : null;
+        $imc = $dato->talla > 0 ? $dato->peso / pow($dato->talla , 2) : null;
 
         if ($dato->presion_alta > 140 || $dato->presion_baja > 90) {
             $alertas[] = [
                 'factor' => 'Presión arterial alta',
+                'paciente' => $nombre,
+                'valor' => "{$dato->presion_alta}/{$dato->presion_baja} mmHg",
+                'link' => route('ver-pacientes', ['id_paciente' => $paciente->id]),
+            ];
+        }
+
+        if ($dato->presion_alta < 90 || $dato->presion_baja < 60) {
+            $alertas[] = [
+                'factor' => 'Presión arterial baja',
                 'paciente' => $nombre,
                 'valor' => "{$dato->presion_alta}/{$dato->presion_baja} mmHg",
                 'link' => route('ver-pacientes', ['id_paciente' => $paciente->id]),
@@ -961,6 +972,9 @@ public function modificar_password1(Request $request)
         }
     }
 
+    // Ordenar alertas por paciente antes de enviarlas a la vista
+    $alertas = collect($alertas)->sortBy('paciente')->values();
+
     return view('pacientes.index', compact('alertas', 'pacientes'));
-    }
+}
 }
