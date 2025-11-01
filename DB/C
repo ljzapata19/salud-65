@@ -1,0 +1,966 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\DatosClinicos;
+use App\Models\FcmToken;
+use App\Models\Medico;
+use App\Models\MedicoPaciente;
+use Illuminate\Http\Request;
+use App\Models\Paciente;
+use App\Models\User;
+use App\Traits\MensajeTrait;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator as FacadesValidator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\Log;
+
+
+
+class PacienteController extends Controller
+{
+    use MensajeTrait;
+
+    public function index()
+    {
+        $pacientes = Paciente::all();
+
+        return view('pacientes.index', compact('pacientes'));
+    }
+
+    public function create()
+    {
+        return view('pacientes.create');
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'rela_users' => 'required|numeric',
+            'rela_genero' => 'nullable|string|max:50',
+            'rela_nivel_instruccion' => 'nullable|string|max:50',
+            'rela_departamento' => 'nullable|string|max:50',
+            'rela_grupo_conviviente' => 'nullable|string|max:50',
+            'nombre' => 'required|string|max:40',
+            'apellido' => 'required|string|max:40',
+            'dni' => 'required|numeric',
+            'fecha_nacimiento' => 'nullable|date',
+            'domicilio' => 'nullable|string|max:200',
+            'telefono' => 'nullable|string|max:20',
+            'celular' => 'nullable|string|max:40',
+            'nombre_contacto' => 'nullable|string|max:40',
+            'apellido_contacto' => 'nullable|string|max:40',
+            'celular_contacto' => 'nullable|string|max:40',
+            'estado_users' => 'nullable|string|max:255',
+        ]);
+
+        // Crear una nueva instancia del modelo con los datos del formulario
+        $nuevoUsuario = new Paciente([
+            'rela_users' => $request->input('rela_users'),
+            'rela_genero' => $request->input('rela_genero'),
+            'rela_nivel_instruccion' => $request->input('rela_nivel_instruccion'),
+            'rela_departamento' => $request->input('rela_departamento'),
+            'rela_grupo_conviviente' => $request->input('rela_grupo_conviviente'),
+            'nombre' => $request->input('nombre'),
+            'apellido' => $request->input('apellido'),
+            'dni' => $request->input('dni'),
+            'fecha_nacimiento' => $request->input('fecha_nacimiento'),
+            'celular' => $request->input('celular'),
+            'nombre_contacto' => $request->input('nombre_contacto'),
+            'apellido_contacto' => $request->input('apellido_contacto'),
+            'celular_contacto' => $request->input('celular_contacto'),
+            'estado_users' => $request->input('estado_users'),
+        ]);
+
+        // Guardar en la base de datos
+        $nuevoUsuario->save();
+    }
+
+    public function show($id_paciente)
+    {
+        $paciente = Paciente::find($id_paciente);
+        $user = Auth::user();
+
+        $id_medico = Medico::where('rela_users', $user->id)->first();
+        $id_medico = $id_medico->id;
+        $request = new Request([
+            'id_paciente' => $id_paciente,
+            'estado_clinico' => 1
+        ]);
+        $controller = new DatosClinicosController();
+        $dato_clinico = $controller-> read_datos_clinicos_paciente($request);
+
+        $chequeosController = new RecordatorioMedicoController();
+        $chequeos = $chequeosController->chequeos_medico_paciente($id_medico, $id_paciente);
+        
+        $request2 = new Request([
+            'id_medico' => $id_medico,
+            'id_paciente' => $id_paciente,
+        ]);
+        $avisosController = new AvisosGeneralesController();
+        $avisos = $avisosController->read_avisos_general_medico($request2);
+        return view('pacientes.show', compact('id_paciente','chequeos','id_medico', 'paciente', 'dato_clinico', 'avisos'));
+    }
+
+    public function edit(Paciente $paciente)
+    {
+        return view('pacientes.edit', compact('paciente'));
+    }
+
+    public function update(Request $request, Paciente $paciente)
+    {
+        // Valida y actualiza los datos del paciente
+        $request->validate([
+            'rela_users' => 'sometimes|numeric',
+            'rela_genero' => 'sometimes|nullable|string|max:50',
+            'rela_nivel_instruccion' => 'sometimes|nullable|string|max:50',
+            'rela_departamento' => 'sometimes|nullable|string|max:50',
+            'rela_grupo_conviviente' => 'sometimes|nullable|string|max:50',
+            'nombre' => 'sometimes|string|max:40',
+            'apellido' => 'sometimes|string|max:40',
+            'dni' => 'sometimes|numeric',
+            'fecha_nacimiento' => 'sometimes|nullable|date',
+            'domicilio' => 'sometimes|nullable|string|max:200',
+            'telefono' => 'sometimes|nullable|string|max:20',
+            'celular' => 'sometimes|nullable|string|max:40',
+            'nombre_contacto' => 'sometimes|nullable|string|max:40',
+            'apellido_contacto' => 'sometimes|nullable|string|max:40',
+            'celular_contacto' => 'sometimes|nullable|string|max:40',
+            'estado_users' => 'sometimes|nullable|string|max:255',
+        ]);
+
+        $paciente->update($request->all());
+
+        return redirect()->route('mis-pacientes')
+            ->with('success', 'Paciente actualizado correctamente');
+    }
+
+    public function destroy(Paciente $paciente)
+    {
+        $paciente->delete();
+
+        return redirect()->route('mis-pacientes')
+            ->with('success', 'Paciente eliminado correctamente');
+    }
+//Función que permite transformar el dato de la BD que esta como fecha de nacimiento, lo calcula y pasa la edad.
+    public function listaPacientes()
+    {
+        $pacientes = DB::table('pacientes')
+            ->select('id', 'nombre', 'apellido', 'fecha_nacimiento',
+                     DB::raw('CASE WHEN fecha_nacimiento IS NOT NULL THEN TIMESTAMPDIFF(YEAR, fecha_nacimiento, CURDATE()) ELSE NULL END AS edad'))
+            ->get();
+
+        return view('pacientes.show', compact('pacientes'));
+    }
+
+    public function pacientesVinculados(Request $request)
+    {
+        $search = $request->input('search');
+
+        // Obtener el usuario autenticado
+        $user = Auth::user();
+        $idUsuario = $user->id;
+
+        // Buscar al médico relacionado con el usuario
+        $medico = Medico::where('rela_users', $idUsuario)->first();
+
+        if (!$medico) {
+            // Si no se encuentra el médico, devolver una lista vacía o manejar el error
+            return view('pacientes.index', ['pacientes' => []]);
+        }
+
+        $id_medico = $medico->id;
+
+        try {
+            // Consultar pacientes vinculados al médico autenticado
+            $query = Paciente::select('pacientes.id', 'pacientes.nombre', 'pacientes.apellido', 'pacientes.dni', 'medico_pacientes.estado_habilitacion')
+                ->join('medico_pacientes', 'medico_pacientes.rela_paciente', '=', 'pacientes.id') // INNER JOIN para filtrar solo los relacionados
+                ->where('medico_pacientes.rela_medico', $id_medico)
+                ->where('medico_pacientes.estado_habilitacion', '2'); // Filtrar solo pacientes habilitados (ENUM string)
+            
+            // Aplicar filtro de búsqueda solo si existe
+            if ($search) {
+                $query->where(function($q) use ($search) {
+                    $q->where('pacientes.apellido', 'LIKE', "%{$search}%")
+                      ->orWhere('pacientes.nombre', 'LIKE', "%{$search}%")
+                      ->orWhere('pacientes.dni', 'LIKE', "%{$search}%");
+                });
+            }
+            
+            $pacientes = $query->orderBy('medico_pacientes.created_at', 'asc')->get();
+        } catch (\Exception $error) {
+            // Manejar errores, devolver vacío o mensaje específico
+            return view('pacientes.index', ['pacientes' => []]);
+        }
+
+        // Enviar los datos a la vista
+        return view('pacientes.index', compact('pacientes'));
+    }
+
+
+    public function estado_solicitud_medico_paciente_view()
+    {
+
+        $user = Auth::user();
+        $idUsuario = $user->id;
+        $medico = Medico::where('rela_users', $idUsuario)->first();
+        $id_medico = $medico->id;
+
+        try {
+
+            $pacientesN = Paciente::select('pacientes.id', 'nombre', 'apellido', 'dni', 'estado_habilitacion')
+                ->leftJoin('medico_pacientes', 'medico_pacientes.rela_paciente', '=', 'pacientes.id')
+                ->where('rela_medico', $id_medico)
+                ->where('estado_habilitacion', 2)
+                ->get();
+
+            if ($pacientesN->count() > 0) {
+                $pacientes = $pacientesN;
+            } else {
+
+                $pacientes = [];
+            }
+        } catch (\Exception $error) {
+
+            $pacientes = $this->msg_error("Error", $error->getMessage(), $error->getCode());
+        }
+
+        return view('pacientes.index', compact('pacientes'));
+    }
+
+    public function vincular_pacientes(Request $request)
+    {
+        $search = $request->input('search');
+
+        $pacientes = Paciente::select('pacientes.id', 'nombre', 'apellido', 'dni', 'fecha_nacimiento', 'estado_habilitacion')
+        ->leftJoin('medico_pacientes', 'medico_pacientes.rela_paciente', '=', 'pacientes.id')
+        ->where(function ($query) {
+            $query->whereNull('medico_pacientes.rela_paciente')
+                  ->orWhere('medico_pacientes.estado_habilitacion', '=', 0);
+        })
+        ->where('apellido', 'LIKE', "%{$search}%")
+        ->get();
+
+        $solicitudes = $this->estado_solicitud_medico_paciente(1);
+
+        return view('pacientes.vincular', compact('pacientes', 'solicitudes'));
+    }
+
+    public function estado_solicitud_medico_paciente()
+    {
+
+        $user = Auth::user();
+        $idUsuario = $user->id;
+        $medico = Medico::where('rela_users', $idUsuario)->first();
+
+        $id_medico = $medico->id;
+
+        try {
+
+            $pacientes = Paciente::select('pacientes.id', 'nombre', 'apellido', 'dni', 'estado_habilitacion', 'medico_pacientes.created_at')
+                ->join('medico_pacientes', 'medico_pacientes.rela_paciente', '=', 'pacientes.id') // Cambiado de LEFT JOIN a JOIN
+                ->where('medico_pacientes.rela_medico', $id_medico)
+                ->orderBy('medico_pacientes.created_at', 'asc')
+                ->get();
+
+            if ($pacientes->count() > 0) {
+                $returnData = $pacientes;
+            } else {
+
+                $returnData = [];
+            }
+        } catch (\Exception $error) {
+
+            $returnData = $this->msg_error("Error", $error->getMessage(), $error->getCode());
+        }
+
+        return $returnData;
+    }
+
+    function solicitud_medico_paciente($idPaciente)
+    {
+
+        $user = Auth::user();
+        $idUsuario = $user->id;
+        $medico = Medico::where('rela_users', $idUsuario)->first();
+
+        $id_medico = $medico->id;
+
+        $estado_habilitacion = '1';
+
+        try {
+
+            $solicitud_paciente = Paciente::select('*')
+            ->LeftJoin ('medico_pacientes', 'medico_pacientes.rela_paciente', '=', 'pacientes.id')
+            ->where('medico_pacientes.rela_paciente', $idPaciente)
+            ->where('medico_pacientes.rela_medico', $id_medico)
+            ->first();
+
+            if ($solicitud_paciente) {
+
+                $estado_habilitacion = '1';
+
+                MedicoPaciente::where('rela_paciente', $idPaciente)
+                    ->where('rela_medico', $id_medico)
+                    ->update(['estado_habilitacion' => $estado_habilitacion]);
+
+                $returnData = 2;
+            } else {
+                // $paciente = $idPaciente;
+
+                // if ($paciente->count() > 0) {
+                //     $id_paciente = $paciente->id;
+
+                    $insert_resultado = new MedicoPaciente();
+                    $insert_resultado->rela_paciente = $idPaciente;
+                    $insert_resultado->rela_medico = $id_medico;
+                    $insert_resultado->estado_habilitacion = $estado_habilitacion;
+                    $insert_resultado->mensaje = null; // Campo correcto según estructura actual
+                    $insert_resultado->save();
+
+                    // Obtener el nombre del médico
+                    $medico_data = Medico::find($id_medico);
+                    $nombre_medico = trim($medico_data->nombre . ' ' . $medico_data->apellido);
+
+                    // Enviar notificación push de vinculación al paciente
+                    try {
+                        $firebase = new \App\Services\FirebaseNotificationService();
+                        $notificationController = new \App\Http\Controllers\PushNotificationController($firebase);
+                        $notificationController->crearNotificacionVinculacion($idPaciente, $id_medico, $nombre_medico);
+                    } catch (\Exception $e) {
+                        Log::warning('Error enviando notificación de vinculación: ' . $e->getMessage());
+                    }
+
+                     $returnData = 1;
+                // } else {
+
+                //     $returnData = [];
+                // }
+            }
+        } catch (\Exception $error) {
+
+            $returnData = $error->getMessage() . $error->getCode();
+        }
+
+        return $returnData;
+    }
+
+
+    public function datos_personales(Request $request)
+    {
+        $pacienteId = $request->input('id_paciente');
+
+        $pacientes = Paciente::where('id', $pacienteId)->get();
+
+        if ($pacientes->isNotEmpty()) {
+            $returnData = $this->msg("Success", $pacientes);
+        } else {
+            $returnData = $this->msg("Vacio", []);
+        }
+
+        return $returnData;
+    }
+
+    public function save_datos_personales(Request $request)
+    {
+
+        $id_paciente = $request->input('id_paciente');
+        $nombre = $request->input('nombre');
+        $apellido = $request->input('apellido');
+        $dni = $request->input('dni');
+        $fecha_nacimiento = $request->input('fecha_nacimiento');
+        $rela_genero = $request->input('rela_genero');
+        $rela_departamento = $request->input('rela_departamento');
+        $rela_nivel_instruccion = $request->input('rela_nivel_instruccion');
+        $rela_grupo_conviviente = $request->input('rela_grupo_conviviente');
+        $celular = $request->input('celular');
+        $nombre_contacto = $request->input('nombre_contacto');
+        $apellido_contacto = $request->input('apellido_contacto');
+        $celular_contacto = $request->input('celular_contacto');
+        $estado_users = $request->input('estado_users');
+        $rela_users = $request->input('rela_users');
+
+        try {
+
+            $update_paciente = Paciente::where('rela_users', $rela_users)->update([
+                'nombre' => $nombre,
+                'apellido' => $apellido,
+                'dni' => $dni,
+                'fecha_nacimiento' => $fecha_nacimiento,
+                'rela_genero' => $rela_genero,
+                'rela_nivel_instruccion' => $rela_nivel_instruccion,
+                'rela_grupo_conviviente' => $rela_grupo_conviviente,
+                'celular' => $celular,
+                'nombre_contacto' => $nombre_contacto,
+                'apellido_contacto' => $apellido_contacto,
+                'celular_contacto' => $celular_contacto,
+                'rela_departamento' => $rela_departamento,
+                'estado_users' => $estado_users,
+                'rela_users' => $rela_users
+            ]);
+
+            if ($update_paciente > 0) {
+                $id_paciente = Paciente::where('id', $id_paciente)->select('id')->first();
+
+                $lista = array(
+                    "id_paciente" => $id_paciente,
+                    "nombre" => $nombre,
+                    "apellido" => $apellido,
+                    "dni" => $dni,
+                    "rela_users" => $rela_users,
+                    "fecha_nacimiento" => $fecha_nacimiento,
+                    "rela_genero" => $rela_genero,
+                    "rela_nivel_instruccion" => $rela_nivel_instruccion,
+                    "rela_grupo_conviviente" => $rela_grupo_conviviente,
+                    "celular" => $celular,
+                    'nombre_contacto' => $nombre_contacto,
+                    'apellido_contacto' => $apellido_contacto,
+                    'celular_contacto' => $celular_contacto,
+                    "rela_departamento" => $rela_departamento,
+                    "estado_users" => $estado_users,
+
+                );
+
+                $returnData = $this->msg("Success", $lista);
+            } else {
+                return $returnData = $this->msg("Success", "No se pudieron guardar los datos");
+            }
+        } catch (\Exception $error) {
+
+            $returnData = $this->msg_error("Error", $error->getMessage(), $error->getCode());
+        }
+
+        return $returnData;
+    }
+
+    public function register_paciente(Request $request)
+    {
+
+        $email = $request->input('email');
+        $password = $request->input('password');
+        $nombre = $request->input('nombre');
+        $apellido = $request->input('apellido');
+        $dni = $request->input('dni');
+        $token = $request->token;
+        $nameDispositive = $request->nameDispositive;
+
+        $estado_users = '1';
+
+        try {
+
+            // Limpiar los espacios en blanco
+            $email = trim($email);
+
+            $lista = array();
+
+            $user = User::where('email', $email)->first();
+
+
+            if ($user) {
+                $returnData = $this->msg("Vacio", "Ya existe un paciente con ese EMAIL");
+                return $returnData;
+            }
+
+            $paciente = Paciente::where('dni', $dni)->first();
+
+            if ($paciente) {
+                return $returnData = $this->msg("Vacio", "Ya existe un paciente con ese DNI");
+            }
+
+            // Definir las reglas de validación
+            $validator = FacadesValidator::make([
+                'email' => $email,
+                'password' => $password,
+                'nombre' => $nombre,
+                'apellido' => $apellido,
+                'dni' => $dni
+            ], [
+                'email' => 'required|email|unique:users,email',
+                'password' => [
+                    'required',
+                    Password::min(6) // Longitud mínima
+                            ->letters() // Requiere al menos una letra
+                            ->numbers() // Requiere al menos un número
+                ],
+            ]);
+
+            // Verificar si la validación falla
+            if ($validator->fails()) {
+                // Devolver los errores
+                $returnData = $this->msg("Error", $validator->errors());
+                return $returnData;
+            }
+
+            $password = Hash::make($password);
+
+            $user = new User();
+            $user->email = $email;
+            $user->password = $password;
+            $user->id_rol = 3;
+            $user->save();
+
+            $fcmToken = new FcmToken();
+            $fcmToken->rela_user = $user->id;
+            $fcmToken->token = $token;
+            $fcmToken->device_name = $nameDispositive;
+            $fcmToken->save();
+
+            if ($user) {
+
+                $id_user_insertado = $user->id;
+
+                $paciente = new Paciente();
+                $paciente->rela_users = $id_user_insertado;
+                $paciente->nombre = $nombre;
+                $paciente->apellido = $apellido;
+                $paciente->estado_users = $estado_users;
+                $paciente->dni = $dni;
+                $paciente->save();
+
+                if ($paciente) {
+                    // Obtener el ID insertado
+                    $id_paciente_insertado = $paciente->id;
+
+                    $lista = array(
+                        "request" => "Success",
+                        "email" => $email,
+                        "password" => $password,
+                        "paciente" => [
+                            "id_paciente" => $id_paciente_insertado,
+                            "rela_users" => $id_user_insertado,
+                            "nombre" => $nombre,
+                            "apellido" => $apellido,
+                            "dni" => $dni,
+                            "estado_users" => $estado_users
+                        ]
+                    );
+                    $returnData = $this->msg("Success", $lista);
+                } else {
+                    $returnData = $this->msg("Error", "No se pudo realizar el registro");
+                }
+            }
+        } catch (\Exception $error) {
+
+            $returnData = $this->msg_error("Error", $error->getMessage(), $error->getCode());
+        }
+
+        return $returnData;
+    }
+
+    public function modificar_correo_electronico(Request $request)
+    {
+    try {
+        // Obtener el rela_users del paciente
+        $rela_users = Paciente::where('id', $request->input('id_paciente'))->pluck('rela_users')->first();
+
+        // Verificar si se encontró el rela_users del paciente
+        if (!$rela_users) {
+            $returnData = $this->msg("Error", "Paciente no encontrado");
+            return $returnData;
+        }
+
+        // Intentar actualizar el correo electrónico del usuario relacionado
+        $updated = User::where('id', $rela_users)
+                        ->update(['email' => $request->input('email')]);
+
+        // Verificar si la actualización fue exitosa
+        if ($updated) {
+            $lista = [
+                "data" => "Correo electrónico actualizado exitosamente",
+                "email" => $request->input('email')
+            ];
+
+            $returnData = $this->msg("Success", $lista);
+            return $returnData;
+        } else {
+            return response()->json([
+                'status' => 'Error',
+                'message' => 'No se pudo actualizar el correo electrónico'
+            ], 500);
+        }
+
+    } catch (\Exception $e) {
+        // Capturar cualquier error inesperado y devolver una respuesta con el error
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Ocurrió un error inesperado: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+
+public function modificar_password(Request $request)
+{
+    try {
+        // Obtener el rela_users del paciente
+        $rela_users = Paciente::where('id', $request->input('id_paciente'))->pluck('rela_users')->first();
+
+        // Verificar si se encontró el rela_users del paciente
+        if (!$rela_users) {
+            return $this->msg("Error", "Paciente no encontrado");
+        }
+
+        // Obtener el usuario asociado al rela_users
+        $user = User::findOrFail($rela_users);
+
+        // Verificar que la contraseña actual y la nueva contraseña estén presentes en la solicitud
+        $current_password = $request->input('current_password');
+        $new_password = $request->input('new_password');
+
+        if (!$current_password || !$new_password) {
+            return $this->msg("Error", "La contraseña actual y la nueva contraseña son obligatorias");
+        }
+
+        // Verificar que la contraseña actual sea correcta
+        if (!Hash::check($current_password, $user->password)) {
+            return $this->msg("Error", "La contraseña actual es incorrecta");
+        }
+
+        // Verificar que la nueva contraseña sea diferente de la actual
+        if (Hash::check($new_password, $user->password)) {
+            return $this->msg("Error", "La nueva contraseña no puede ser igual a la actual");
+        }
+
+        // Cifrar la nueva contraseña
+        $hashed_password = Hash::make($new_password);
+
+        // Actualizar la contraseña del usuario
+        $user->password = $hashed_password;
+        $user->save();
+
+        $returnData = $this->msg("Success", "Contraseña actualizada exitosamente");
+        return $returnData;
+
+    } catch (\Exception $e) {
+        // Capturar cualquier error inesperado y devolver una respuesta con el error
+        $this->msg("Error", 'Ocurrió un error inesperado: '. $e->getMessage());
+    }
+}
+
+public function modificar_password1(Request $request)
+{
+    try {
+        // Obtener el rela_users del paciente
+        $rela_users = Paciente::where('id', $request->input('id_paciente'))->pluck('rela_users')->first();
+
+        // Verificar si se encontró el rela_users del paciente
+        if (!$rela_users) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Paciente no encontrado'
+            ], 404);
+        }
+
+        // Verificar que la nueva contraseña esté presente en la solicitud
+        $new_password = $request->input('password');
+        if (!$new_password) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'La nueva contraseña es obligatoria'
+            ], 400);
+        }
+
+        // Cifrar la nueva contraseña
+        $hashed_password = Hash::make($new_password);
+
+        // Intentar actualizar la contraseña del usuario relacionado
+        $updated = User::where('id', $rela_users)
+                        ->update(['password' => $hashed_password]);
+
+        // Verificar si la actualización fue exitosa
+        if ($updated) {
+            $lista = [
+                "data" => "Contraseña actualizada exitosamente"
+            ];
+
+            $returnData = $this->msg("Success", $lista);
+            return $returnData;
+        } else {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No se pudo actualizar la contraseña'
+            ], 500);
+        }
+
+    } catch (\Exception $e) {
+        // Capturar cualquier error inesperado y devolver una respuesta con el error
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Ocurrió un error inesperado: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+
+    // Funciones WEB
+
+    function read_datos_personales(Request $request)
+{
+
+    $id_paciente = $request->input("id_paciente");
+
+    try {
+
+        $select_data = Paciente::select('rela_users', 'rela_nivel_instruccion', 'rela_grupo_conviviente', 'rela_departamento', 'rela_genero', 'nombre', 'apellido', 'dni', 'fecha_nacimiento', 'celular', 'nombre_contacto', 'apellido_contacto', 'celular_contacto')
+        ->where('id', $id_paciente)
+        ->first();
+
+        if ($select_data) {
+
+            $rela_users = $select_data->rela_users;
+            $rela_nivel_instruccion= $select_data->rela_nivel_instruccion;
+            $rela_grupo_conviviente= $select_data->rela_grupo_conviviente;
+            $rela_departamento= $select_data->rela_departamento;
+            $rela_genero= $select_data->rela_genero;
+            $nombre= $select_data->nombre;
+            $apellido= $select_data->apellido;
+            $dni= $select_data->dni;
+            $fecha_nacimiento= $select_data->fecha_nacimiento;
+            $celular= $select_data->celular;
+            $nombre_contacto= $select_data->nombre_contacto;
+            $apellido_contacto= $select_data->apellido_contacto;
+            $celular_contacto= $select_data->celular_contacto;
+
+        } else {
+
+            return $this->msg_error("Error: ", "No se encuetra el paciente", 0);
+
+        }
+
+
+        $select_data_clinica = DatosClinicos::select('presion_alta', 'presion_baja', 'pulso', 'peso', 'circunferencia_cintura', 'consume_alcohol', 'consume_marihuana', 'otras_drogas', 'fuma_tabaco')
+        ->where('rela_paciente', $id_paciente)
+        ->where('estado_clinico', 1)
+        ->first();
+
+        if ($select_data_clinica) {
+
+            // $data_clinica = array(
+            // "presion_alta" => $select_data_clinica->presion_alta,
+            // "presion_baja" => $select_data_clinica->presion_baja,
+            // "pulso" => $select_data_clinica->pulso,
+            // "peso" => $select_data_clinica->peso,
+            // "circunferencia_cintura" => $select_data_clinica->circunferencia_cintura
+            // );
+
+            $presion_alta = $select_data_clinica->presion_alta;
+            $presion_baja = $select_data_clinica->presion_baja;
+            $pulso = $select_data_clinica->pulso;
+            $peso = $select_data_clinica->peso;
+            $circunferencia_cintura = $select_data_clinica->circunferencia_cintura;
+
+            switch ($select_data_clinica->consume_alcohol) {
+                case 1:
+                    $consume_alcohol = "Si";
+                    break;
+                case 2:
+                        $consume_alcohol = "No";
+                    break;
+                case 902:
+                    $consume_alcohol = "A veces (una vez al mes)";
+                    break;
+                case 903:
+                    $consume_alcohol = "Con frecuencia (una vez por semana)";
+                    break;
+                case 904:
+                    $consume_alcohol = "Siempre (casi todos los días)";
+                    break;
+            }
+            switch ($select_data_clinica->consume_marihuana) {
+                case 1:
+                $consume_marihuana = "Si";
+                break;
+                case 2:
+                    $consume_marihuana = "No";
+                break;
+                case 902:
+                    $consume_marihuana = "A veces (una vez al mes)";
+                    break;
+                case 903:
+                    $consume_marihuana = "Con frecuencia (una vez por semana)";
+                    break;
+                case 904:
+                    $consume_marihuana = "Siempre (casi todos los días)";
+                    break;
+            }
+            switch ($select_data_clinica->otras_drogas) {
+                case 1:
+                    $otras_drogas = "Si";
+                    break;
+                case 2:
+                        $otras_drogas = "No";
+                    break;
+                case 902:
+                    $otras_drogas = "A veces (una vez al mes)";
+                    break;
+                case 903:
+                    $otras_drogas = "Con frecuencia (una vez por semana)";
+                    break;
+                case 904:
+                    $otras_drogas = "Siempre (casi todos los días)";
+                    break;
+            }
+            switch ($select_data_clinica->fuma_tabaco) {
+                case 1:
+                    $fuma_tabaco = "Si";
+                    break;
+                case 2:
+                        $fuma_tabaco = "No";
+                    break;
+                case 902:
+                    $fuma_tabaco = "A veces (una vez al mes)";
+                    break;
+                case 903:
+                    $fuma_tabaco = "Con frecuencia (una vez por semana)";
+                    break;
+                case 904:
+                    $fuma_tabaco = "Siempre (casi todos los días)";
+                    break;
+            }
+
+            $data = array(
+                "rela_users" => $rela_users,
+                "rela_nivel_instruccion" => $rela_nivel_instruccion,
+                "rela_grupo_conviviente" => $rela_grupo_conviviente,
+                "rela_departamento" => $rela_departamento,
+                "rela_genero" => $rela_genero,
+                "nombre" => $nombre,
+                "apellido" => $apellido,
+                "dni" => $dni,
+                "fecha_nacimiento" => $fecha_nacimiento,
+                "celular" => $celular,
+                "nombre_contacto" => $nombre_contacto,
+                "apellido_contacto" => $apellido_contacto,
+                "celular_contacto" => $celular_contacto,
+                "presion_alta" => $presion_alta,
+                "presion_baja" => $presion_baja,
+                "pulso" => $pulso,
+                "peso" => $peso,
+                "circunferencia_cintura" => $circunferencia_cintura,
+                "consume_alcohol" => $consume_alcohol,
+                "consume_marihuana" => $consume_marihuana,
+                "otras_drogas" => $otras_drogas,
+                "fuma_tabaco" => $fuma_tabaco
+            );
+
+            $returnData = $this->msg("Success", $data);
+        } else {
+            $data = array(
+                "rela_users" => $rela_users,
+                "rela_nivel_instruccion" => $rela_nivel_instruccion,
+                "rela_grupo_conviviente" => $rela_grupo_conviviente,
+                "rela_departamento" => $rela_departamento,
+                "rela_genero" => $rela_genero,
+                "nombre" => $nombre,
+                "apellido" => $apellido,
+                "dni" => $dni,
+                "fecha_nacimiento" => $fecha_nacimiento,
+                "celular" => $celular,
+                "nombre_contacto" => $nombre_contacto,
+                "apellido_contacto" => $apellido_contacto,
+                "celular_contacto" => $celular_contacto,
+                "presion_alta" => "",
+                "presion_baja" => "",
+                "pulso" => "",
+                "peso" => "",
+                "circunferencia_cintura" => "",
+                "consume_alcohol" => "",
+                "consume_marihuana" => "",
+                "otras_drogas" => "",
+                "fuma_tabaco" => "",
+                "estado_clinico" => ""
+            );
+            $returnData = $this->msg("Success", $data);
+        }
+    } catch (\Exception $error) {
+        $returnData = $this->msg_error("Error", $error->getMessage(), $error->getCode());
+    }
+
+    return $returnData;
+}
+ public function alertasClinicas()
+{
+    $medico = auth()->user()->medico;
+    if (!$medico) {
+        return redirect()->back()->with('error', 'No se encontró el médico asociado.');
+    }
+
+     // IDs de pacientes habilitados
+    $pacienteIds = MedicoPaciente::where('rela_medico', $medico->id)
+        ->where('estado_habilitacion', '2')
+        ->pluck('rela_paciente');
+
+    // Pacientes completos
+    $pacientes = Paciente::whereIn('id', $pacienteIds)->get();
+
+    // Obtener el último registro clínico de cada paciente
+    $datos = DatosClinicos::select('datos_clinicos.*')
+        ->whereIn('rela_paciente', $pacienteIds)
+        ->whereIn('estado_clinico', function ($query) {
+            $query->selectRaw('MAX(estado_clinico)')
+                ->from('datos_clinicos as dc2')
+                ->whereColumn('dc2.rela_paciente', 'datos_clinicos.rela_paciente');
+        })
+        ->get();
+
+    $alertas = [];
+
+    foreach ($datos as $dato) {
+        $paciente = Paciente::find($dato->rela_paciente);
+        if (!$paciente) continue;
+
+        $nombre = $paciente->apellido . ', ' . $paciente->nombre;
+
+        $imc = $dato->talla > 0 ? $dato->peso / pow(($dato->talla / 100), 2) : null;
+
+        if ($dato->presion_alta > 140 || $dato->presion_baja > 90) {
+            $alertas[] = [
+                'factor' => 'Presión arterial alta',
+                'paciente' => $nombre,
+                'valor' => "{$dato->presion_alta}/{$dato->presion_baja} mmHg",
+                'link' => route('ver-pacientes', ['id_paciente' => $paciente->id]),
+            ];
+        }
+
+        if ($dato->pulso > 100) {
+            $alertas[] = [
+                'factor' => 'Taquicardia',
+                'paciente' => $nombre,
+                'valor' => "{$dato->pulso} bpm",
+                'link' => route('ver-pacientes', ['id_paciente' => $paciente->id]),
+            ];
+        }
+
+        if ($dato->pulso < 60) {
+            $alertas[] = [
+                'factor' => 'Bradicardia',
+                'paciente' => $nombre,
+                'valor' => "{$dato->pulso} bpm",
+                'link' => route('ver-pacientes', ['id_paciente' => $paciente->id]),
+            ];
+        }
+
+        if ($imc) {
+            if ($imc < 18.5) {
+                $alertas[] = [
+                    'factor' => 'Bajo peso (IMC)',
+                    'paciente' => $nombre,
+                    'valor' => number_format($imc, 1),
+                    'link' => route('ver-pacientes', ['id_paciente' => $paciente->id]),
+                ];
+            } elseif ($imc >= 30) {
+                $alertas[] = [
+                    'factor' => 'Obesidad (IMC)',
+                    'paciente' => $nombre,
+                    'valor' => number_format($imc, 1),
+                    'link' => route('ver-pacientes', ['id_paciente' => $paciente->id]),
+                ];
+            }
+        }
+    }
+
+    return view('pacientes.index', compact('alertas', 'pacientes'));
+    }
+}
