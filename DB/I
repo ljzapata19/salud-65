@@ -1,0 +1,317 @@
+<!-- resources/views/pacientes/index.blade.php -->
+<x-app-layout>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+        * {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .card-patient {
+            transition: all 0.3s ease;
+        }
+
+        .card-patient:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-modern {
+            transition: all 0.2s ease;
+        }
+
+        .btn-modern:hover {
+            transform: translateY(-1px);
+        }
+
+        .scroll-btn {
+            transition: all 0.3s ease;
+        }
+
+        .scroll-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .calendar-day {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .calendar-day:hover {
+            background-color: rgba(59, 130, 246, 0.1);
+            transform: scale(1.05);
+        }
+
+        .calendar-day.today {
+            background-color: #3b82f6;
+            color: white;
+            font-weight: 600;
+        }
+    </style>
+
+    <div class="container-fluid px-2" style="height: calc(100vh - 180px); overflow: hidden;">
+        <div class="row h-100 g-2">
+            <!-- Columna Principal -->
+            <div class="col-lg-8 h-100 d-flex flex-column">
+                <div class="bg-white rounded-3 p-3 h-100 d-flex flex-column" style="overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <h4 class="fw-bold mb-2" style="font-size: 1.25rem;">Mis Pacientes</h4>
+
+                    <!-- Barra de búsqueda -->
+                    <form method="GET" action="{{ route('mis-pacientes') }}" class="mb-2" style="flex-shrink: 0;">
+                        @csrf
+                        <div class="d-flex gap-2">
+                            <input type="text" name="search" class="form-control form-control-sm rounded-3" placeholder="Buscar por Apellido" value="{{ request('search') }}" style="font-size: 0.9rem; border: 2px solid #e2e8f0;">
+                            <button type="submit" class="btn btn-primary btn-sm px-3 btn-modern rounded-3" style="font-size: 0.9rem;">Buscar</button>
+                            <button type="button" onclick="window.location.href='{{ route('mis-pacientes') }}'" class="btn btn-secondary btn-sm px-2 btn-modern rounded-3" style="font-size: 0.9rem;">Restablecer</button>
+                        </div>
+                    </form>
+                    <!-- Carousel de Cards -->
+                    <div class="d-flex align-items-center gap-2 mb-2" style="flex-shrink: 0; height: 110px;">
+                        <button class="btn btn-outline-primary btn-sm scroll-btn rounded-circle" onclick="scrollCards(-1)" style="width: 32px; height: 32px; font-size: 18px; line-height: 1; padding: 0; border-width: 2px;">‹</button>
+
+                        <div class="overflow-hidden flex-grow-1">
+                            <div class="d-flex gap-2" id="cardsContainer" style="transition: transform 0.3s ease;">
+                                @foreach ($pacientes as $paciente)
+                                <div class="card card-patient border-primary flex-shrink-0 rounded-3" style="width: 150px; height: 100px; border-width: 2px; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
+                                    <div class="card-body text-center p-2">
+                                        <div class="bg-light rounded-2 p-1 mb-1" style="border: 1px solid #dee2e6;">
+                                            <small class="d-block" style="font-size: 0.75rem;">{{ $paciente->apellido }}, {{ $paciente->nombre }}</small>
+                                        </div>
+                                        <div class="badge bg-primary mb-1 rounded-2" style="font-size: 0.7rem;">HC {{ $paciente->id }}</div>
+                                        <a href="{{ route('ver-pacientes', ['id_paciente' => $paciente->id]) }}" class="btn btn-primary btn-sm w-100 btn-modern rounded-2" style="font-size: 0.75rem; padding: 3px;">Ver Detalles</a>
+                                    </div>
+                                </div>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <button class="btn btn-outline-primary btn-sm scroll-btn rounded-circle" onclick="scrollCards(1)" style="width: 32px; height: 32px; font-size: 18px; line-height: 1; padding: 0; border-width: 2px;">›</button>
+                    </div>
+
+                    <!-- Contenedor para las tablas -->
+                    <div class="flex-grow-1 d-flex flex-column" style="overflow: hidden; gap: 10px; justify-content: space-between;">
+                        
+                        <!-- Alerta de datos Clínicos -->
+                        <div class="mt-2" style="flex: 0.85; min-height: 0; display: flex; flex-direction: column;">
+                            <h6 class="fw-bold mb-1" style="font-size: 0.95rem;">Alerta de datos Clínicos</h6>
+                            <div class="table-responsive rounded-3" style="flex: 1; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
+                                <table class="table table-sm mb-0" style="background-color: #f87171 !important;">
+                                    <thead style="background-color: #f87171 !important;">
+                                        <tr style="background-color: #f87171 !important;">
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #f87171 !important;">Factor de Riesgo</th>
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #f87171 !important;">Paciente (Apellido y Nombre)</th>
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #f87171 !important;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse ($alertas as $alerta)
+                                            <tr style="background-color: #f87171 !important;">
+                                                <td class="px-2 py-1" style="font-size: 0.85rem;">{{ $alerta['factor'] }}</td>
+                                                <td class="px-2 py-1" style="font-size: 0.85rem;">{{ $alerta['paciente'] }}</td>
+                                                <td class="px-2 py-1" style="font-size: 0.85rem;">
+                                                    <a href="{{ $alerta['link'] }}" class="text-primary text-decoration-underline" style="font-size: 0.85rem;">ver</a>
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="3" class="text-center px-2 py-1" style="font-size: 0.85rem;">No se detectaron factores de riesgo.</td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Chequeos vencidos -->
+                        <div class="mt-2" style="flex: 0.85; min-height: 0; display: flex; flex-direction: column;">
+                            <h6 class="fw-bold mb-1" style="font-size: 0.95rem;">Chequeos vencidos</h6>
+                            <div class="table-responsive rounded-3" style="flex: 1; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
+                                <table class="table table-sm mb-0" style="background-color: #fdba74 !important;">
+                                    <thead style="background-color: #fdba74 !important;">
+                                        <tr style="background-color: #fdba74 !important;">
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #fdba74 !important;">Fecha límite</th>
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #fdba74 !important;">Paciente</th>
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #fdba74 !important;">Tipo de chequeo</th>
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #fdba74 !important;">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="chequeos-tbody" style="background-color: #fdba74 !important;">
+                                        <tr style="background-color: #fdba74 !important;">
+                                            <td colspan="4" class="text-center px-2 py-1" style="font-size: 0.85rem; background-color: #fdba74 !important;">Cargando...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Solicitudes antiguas de vinculación -->
+                        <div style="flex: 1.3; min-height: 0; display: flex; flex-direction: column;">
+                            <h6 class="fw-bold mb-1" style="font-size: 0.95rem;">Solicitudes antiguas de vinculación (últimas 5)</h6>
+                            <div class="table-responsive rounded-3" style="flex: 1; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
+                                <table class="table table-sm mb-0" style="background-color: #fde047 !important;">
+                                    <thead style="background-color: #fde047 !important;">
+                                        <tr style="background-color: #fde047 !important;">
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">Fecha</th>
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">Paciente (Apellido y Nombre)</th>
+                                            <th class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="background-color: #fde047 !important;">
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">20/10/25</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">Juan Perez</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">
+                                                <a href="#" class="text-primary text-decoration-underline" style="font-size: 0.85rem;">ver</a>
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: #fde047 !important;">
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">9/11/25</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">Maria Gomez</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">
+                                                <a href="#" class="text-primary text-decoration-underline" style="font-size: 0.85rem;">ver</a>
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: #fde047 !important;">
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">2/12/25</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">Pedro Lopez</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">
+                                                <a href="#" class="text-primary text-decoration-underline" style="font-size: 0.85rem;">ver</a>
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: #fde047 !important;">
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">2/12/26</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">Pedro Lopez</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">
+                                                <a href="#" class="text-primary text-decoration-underline" style="font-size: 0.85rem;">ver</a>
+                                            </td>
+                                        </tr>
+                                        <tr style="background-color: #fde047 !important;">
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">2/12/26</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">Pedro Lopez</td>
+                                            <td class="px-2 py-1" style="font-size: 0.85rem; background-color: #fde047 !important;">
+                                                <a href="#" class="text-primary text-decoration-underline" style="font-size: 0.85rem;">ver</a>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha -->
+            <div class="col-lg-4 h-100 d-flex flex-column gap-2">
+                <!-- Espacio 1 -->
+                <div class="rounded-3 flex-fill" style="background-color: #1e3a8a; min-height: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
+
+                <!-- Espacio 2 -->
+                <div class="rounded-3 flex-fill" style="background-color: #1e3a8a; min-height: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
+
+                <!-- Espacio 3 -->
+                <div class="rounded-3 flex-fill" style="background-color: #1e3a8a; min-height: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
+
+                <!-- Calendario -->
+                <div class="rounded-3 flex-fill p-3 bg-white" style="min-height: 0; display: flex; flex-direction: column; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <button onclick="cambiarMes(-1)" class="btn btn-outline-primary btn-sm rounded-circle scroll-btn" style="width: 28px; height: 28px; padding: 0; font-size: 16px; line-height: 1;">‹</button>
+                        <h6 class="fw-bold m-0" id="mesAnio" style="font-size: 0.95rem;"></h6>
+                        <button onclick="cambiarMes(1)" class="btn btn-outline-primary btn-sm rounded-circle scroll-btn" style="width: 28px; height: 28px; padding: 0; font-size: 16px; line-height: 1;">›</button>
+                    </div>
+
+                    <div class="flex-grow-1" style="overflow: auto;">
+                        <!-- Días de la semana -->
+                        <div class="d-grid mb-1" style="grid-template-columns: repeat(7, 1fr); gap: 2px;">
+                            <div class="text-center fw-semibold" style="font-size: 0.65rem; color: #64748b;">Dom</div>
+                            <div class="text-center fw-semibold" style="font-size: 0.65rem; color: #64748b;">Lun</div>
+                            <div class="text-center fw-semibold" style="font-size: 0.65rem; color: #64748b;">Mar</div>
+                            <div class="text-center fw-semibold" style="font-size: 0.65rem; color: #64748b;">Mié</div>
+                            <div class="text-center fw-semibold" style="font-size: 0.65rem; color: #64748b;">Jue</div>
+                            <div class="text-center fw-semibold" style="font-size: 0.65rem; color: #64748b;">Vie</div>
+                            <div class="text-center fw-semibold" style="font-size: 0.65rem; color: #64748b;">Sáb</div>
+                        </div>
+
+                        <!-- Días del mes -->
+                        <div class="d-grid" id="diasCalendario" style="grid-template-columns: repeat(7, 1fr); gap: 2px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Calendario
+        let fechaActual = new Date();
+
+        function renderCalendario() {
+            const mesAnio = document.getElementById('mesAnio');
+            const diasCalendario = document.getElementById('diasCalendario');
+
+            const año = fechaActual.getFullYear();
+            const mes = fechaActual.getMonth();
+
+            const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+            mesAnio.textContent = `${meses[mes]} ${año}`;
+
+            const primerDia = new Date(año, mes, 1).getDay();
+            const ultimoDia = new Date(año, mes + 1, 0).getDate();
+            const hoy = new Date();
+
+            diasCalendario.innerHTML = '';
+
+            for (let i = 0; i < primerDia; i++) {
+                diasCalendario.innerHTML += '<div></div>';
+            }
+
+            for (let dia = 1; dia <= ultimoDia; dia++) {
+                const esHoy = dia === hoy.getDate() && mes === hoy.getMonth() && año === hoy.getFullYear();
+                const claseHoy = esHoy ? 'today' : '';
+
+                diasCalendario.innerHTML += `
+                    <div class="calendar-day ${claseHoy} text-center rounded-2 p-1"
+                         style="background-color: ${esHoy ? '#3b82f6' : '#f8fafc'};
+                                color: ${esHoy ? 'white' : '#334155'};
+                                font-size: 0.7rem;
+                                aspect-ratio: 1;
+                                border: 1px solid #e2e8f0;">
+                        ${dia}
+                    </div>
+                `;
+            }
+        }
+
+        function cambiarMes(direccion) {
+            fechaActual.setMonth(fechaActual.getMonth() + direccion);
+            renderCalendario();
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            //cargarChequeosVencidos();
+            renderCalendario();
+        });
+
+        
+
+        let currentPosition = 0;
+        const cardWidth = 158;
+
+        function scrollCards(direction) {
+            const container = document.getElementById('cardsContainer');
+            const containerWidth = container.parentElement.offsetWidth;
+            const totalCards = container.children.length;
+            const visibleCards = Math.floor(containerWidth / cardWidth);
+            const maxScroll = Math.max(0, (totalCards - visibleCards) * cardWidth);
+
+            currentPosition -= direction * cardWidth;
+
+            if (currentPosition < 0) currentPosition = 0;
+            if (currentPosition > maxScroll) currentPosition = maxScroll;
+
+            container.style.transform = `translateX(-${currentPosition}px)`;
+        }
+    </script>
+</x-app-layout>
